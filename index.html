@@ -1,140 +1,363 @@
-/***** COMMUNICATION EXECUTION – BACKEND (Google Apps Script) *****
- * 1. Change ADMIN_KEY below to your own secret word.
- * 2. Run setup() once.
- * 3. Deploy → New deployment → Web app → Execute as: Me, Access: Anyone.
- *******************************************************************/
-
-const ADMIN_KEY = 'Ajay@2026';   // only you use this, to open the tracker
-const TZ = 'Asia/Kolkata';
-
-/* ---------- One-time setup: creates tabs and photo folder ---------- */
-function setup() {
-  const ss = SpreadsheetApp.getActive();
-  makeSheet_(ss, 'Stores', ['StoreCode', 'StoreName', 'City', 'PIN'],
-    [['HJ01', 'Sample Store Ranchi', 'Ranchi', '1234']]);
-  makeSheet_(ss, 'Communications', ['CommID', 'Title', 'Details', 'Active', 'Deadline'],
-    [['C-001', 'Sample: Weekend offer display', 'Put offer posters at entry and billing counters', 'Yes', '']]);
-  makeSheet_(ss, 'Responses', ['Timestamp', 'CommID', 'CommTitle', 'StoreCode', 'StoreName',
-    'SMName', 'Status', 'Remarks', 'PhotoLinks'], []);
-
-  const props = PropertiesService.getScriptProperties();
-  if (!props.getProperty('FOLDER_ID')) {
-    const folder = DriveApp.createFolder('Comm Execution Photos');
-    props.setProperty('FOLDER_ID', folder.getId());
-  }
-  SpreadsheetApp.getUi().alert('Setup done. Fill the Stores and Communications tabs.');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Communication Execution</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hind:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#eef2f0; --surface:#ffffff; --ink:#18302a; --muted:#5d6f69; --line:#d3ddd9;
+  --brand:#0d6b4f; --brand-ink:#ffffff;
+  --done:#0d6b4f; --done-bg:#dcefe6; --part:#9a6200; --part-bg:#fbeccd;
+  --not:#b3261e; --not-bg:#f9dedc; --pend:#5d6f69; --pend-bg:#e6ebe9;
+  color-scheme:light;
 }
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1714; --surface:#17221e; --ink:#e3ece8; --muted:#97aaa3; --line:#2b3a35;
+  --brand:#3fb68b; --brand-ink:#06140f;
+  --done:#6fd3a9; --done-bg:#163b2d; --part:#f0bf63; --part-bg:#3b2d0f;
+  --not:#f2a29c; --not-bg:#45201d; --pend:#97aaa3; --pend-bg:#232f2b; color-scheme:dark;}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:17px/1.5 Hind,"Segoe UI",Roboto,Arial,sans-serif;
+  padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+header{background:var(--brand);color:var(--brand-ink);padding:18px 18px 22px}
+header h1{margin:0;font-size:1.45rem;line-height:1.2;font-weight:700}
+header p{margin:2px 0 0;opacity:.85;font-size:.95rem}
+main{max-width:640px;margin:-10px auto 32px;padding:0 12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px}
+label{display:block;font-weight:600;margin:14px 0 6px}
+label:first-child{margin-top:0}
+select,input[type=text],input[type=password],input[type=tel],textarea{
+  width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);
+  border-radius:10px;padding:11px 12px}
+textarea{min-height:76px;resize:vertical}
+:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+.details{margin-top:8px;padding:10px 12px;border-left:4px solid var(--brand);background:var(--bg);
+  border-radius:6px;font-size:.95rem;color:var(--muted)}
+.status{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.status input{position:absolute;opacity:0}
+.status label{margin:0;text-align:center;padding:12px 4px;border:2px solid var(--line);border-radius:10px;
+  font-weight:600;cursor:pointer}
+.status input:focus-visible+label{outline:3px solid var(--brand);outline-offset:2px}
+#st-done:checked+label{border-color:var(--done);background:var(--done-bg);color:var(--done)}
+#st-part:checked+label{border-color:var(--part);background:var(--part-bg);color:var(--part)}
+#st-not:checked+label{border-color:var(--not);background:var(--not-bg);color:var(--not)}
+.photo-btn{display:flex;align-items:center;justify-content:center;gap:8px;border:2px dashed var(--line);
+  border-radius:12px;padding:18px;cursor:pointer;font-weight:600;color:var(--brand);margin:0}
+.thumbs{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.thumbs div{position:relative}
+.thumbs img{width:92px;height:92px;object-fit:cover;border-radius:10px;display:block}
+.thumbs button{position:absolute;top:-6px;right:-6px;width:26px;height:26px;border-radius:50%;border:0;
+  background:var(--not);color:#fff;font-weight:700;cursor:pointer}
+.hint{font-size:.88rem;color:var(--muted);margin:6px 0 0}
+.btn{display:block;width:100%;font:inherit;font-weight:700;font-size:1.05rem;border:0;border-radius:12px;
+  padding:14px;background:var(--brand);color:var(--brand-ink);cursor:pointer;margin-top:16px}
+.btn.secondary{background:transparent;color:var(--brand);border:2px solid var(--brand)}
+.btn:disabled{opacity:.6;cursor:wait}
+.msg{padding:10px 12px;border-radius:10px;margin-top:12px;font-weight:500}
+.msg.err{background:var(--not-bg);color:var(--not)}
+.msg.ok{background:var(--done-bg);color:var(--done)}
+.big-tick{font-size:3rem;line-height:1;color:var(--done);text-align:center}
+.center{text-align:center}
+.summary{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.summary strong{font-size:2.4rem;line-height:1}
+.bar{height:10px;border-radius:5px;background:var(--pend-bg);overflow:hidden;margin:10px 0 6px}
+.bar span{display:block;height:100%;background:var(--done)}
+.counts{display:flex;gap:14px;flex-wrap:wrap;font-size:.92rem;color:var(--muted)}
+.row{display:flex;justify-content:space-between;gap:10px;padding:12px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.row .name{font-weight:600}
+.row .meta{font-size:.86rem;color:var(--muted)}
+.row .meta a{color:var(--brand);margin-right:8px}
+.chip{flex:none;align-self:flex-start;font-size:.82rem;font-weight:700;padding:3px 10px;border-radius:20px}
+.c-Done{background:var(--done-bg);color:var(--done)}
+.c-Partly{background:var(--part-bg);color:var(--part)}
+.c-Not{background:var(--not-bg);color:var(--not)}
+.c-Pending{background:var(--pend-bg);color:var(--pend)}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.filters button{font:inherit;font-size:.9rem;border:1px solid var(--line);background:var(--bg);color:var(--ink);
+  border-radius:20px;padding:4px 12px;cursor:pointer}
+.filters button[aria-pressed=true]{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Communication execution</h1>
+  <p id="subtitle">Confirm with photos once it is done in your store</p>
+</header>
+<main>
 
-function makeSheet_(ss, name, headers, sample) {
-  let sh = ss.getSheetByName(name);
-  if (sh) return sh;
-  sh = ss.insertSheet(name);
-  sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
-  sh.setFrozenRows(1);
-  if (sample.length) sh.getRange(2, 1, sample.length, headers.length).setValues(sample);
-  if (name === 'Stores') sh.getRange('D:D').setNumberFormat('@'); // keep PINs like 0123
-  return sh;
-}
+<!-- ===== STORE FORM ===== -->
+<section id="formView">
+  <div class="card" id="loading">Loading communications…</div>
+  <form class="card" id="form" hidden novalidate>
+    <label for="comm">Communication</label>
+    <select id="comm" required></select>
+    <div class="details" id="commDetails" hidden></div>
 
-/* ---------- Helpers ---------- */
-function rows_(name) {
-  const v = SpreadsheetApp.getActive().getSheetByName(name).getDataRange().getValues();
-  v.shift();
-  return v.filter(r => String(r[0]).trim() !== '');
-}
-function json_(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-function stores_() {
-  return rows_('Stores').map(r => ({
-    code: String(r[0]).trim(), name: String(r[1]), city: String(r[2]), pin: String(r[3]).trim()
-  }));
-}
-function comms_(onlyActive) {
-  return rows_('Communications')
-    .filter(r => !onlyActive || String(r[3]).trim().toLowerCase() === 'yes')
-    .map(r => ({
-      id: String(r[0]).trim(), title: String(r[1]), details: String(r[2]),
-      active: String(r[3]).trim().toLowerCase() === 'yes',
-      deadline: r[4] instanceof Date ? Utilities.formatDate(r[4], TZ, 'dd-MMM-yyyy') : String(r[4] || '')
-    }));
-}
+    <label for="store">Store</label>
+    <select id="store" required></select>
 
-/* ---------- GET: form config and tracker ---------- */
-function doGet(e) {
-  const p = e.parameter || {};
+    <label for="pin">Store PIN</label>
+    <input id="pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" required>
+
+    <label for="sm">Your name</label>
+    <input id="sm" type="text" autocomplete="name" required>
+
+    <label>Status</label>
+    <div class="status" role="radiogroup">
+      <input type="radio" name="status" id="st-done" value="Done"><label for="st-done">Done</label>
+      <input type="radio" name="status" id="st-part" value="Partly done"><label for="st-part">Partly done</label>
+      <input type="radio" name="status" id="st-not" value="Not done"><label for="st-not">Not done</label>
+    </div>
+
+    <label>Photos (up to 3)</label>
+    <label class="photo-btn" for="photo">📷 Take or add photo</label>
+    <input id="photo" type="file" accept="image/*" capture="environment" multiple hidden>
+    <div class="thumbs" id="thumbs"></div>
+    <p class="hint">Photo is required for Done.</p>
+
+    <label for="remarks">Remarks</label>
+    <textarea id="remarks" placeholder="Required if partly done or not done"></textarea>
+
+    <button class="btn" id="submitBtn" type="submit">Send confirmation</button>
+    <div class="msg err" id="formErr" hidden></div>
+  </form>
+
+  <div class="card center" id="thanks" hidden>
+    <div class="big-tick">✓</div>
+    <h2>Confirmation sent</h2>
+    <p id="thanksText"></p>
+    <button class="btn" id="againBtn" type="button">Send another confirmation</button>
+  </div>
+</section>
+
+<!-- ===== AM TRACKER ===== -->
+<section id="trackerView" hidden>
+  <div class="card" id="keyCard">
+    <label for="adminKey">Admin key</label>
+    <input id="adminKey" type="password" autocomplete="off">
+    <button class="btn" id="openTracker" type="button">Open tracker</button>
+    <div class="msg err" id="keyErr" hidden></div>
+  </div>
+  <div id="trackerBody" hidden>
+    <div class="card">
+      <label for="tComm">Communication</label>
+      <select id="tComm"></select>
+    </div>
+    <div class="card">
+      <div class="summary"><strong id="doneCount">0</strong><span id="doneOf">of 0 stores done</span></div>
+      <div class="bar"><span id="barFill" style="width:0"></span></div>
+      <div class="counts" id="counts"></div>
+      <button class="btn" id="copyPending" type="button">Copy pending list for WhatsApp</button>
+      <button class="btn secondary" id="refresh" type="button">Refresh</button>
+      <div class="msg ok" id="copied" hidden>Pending list copied. Paste it in WhatsApp.</div>
+    </div>
+    <div class="card">
+      <div class="filters" id="filters">
+        <button type="button" data-f="all" aria-pressed="true">All</button>
+        <button type="button" data-f="Pending" aria-pressed="false">Pending</button>
+        <button type="button" data-f="Done" aria-pressed="false">Done</button>
+        <button type="button" data-f="Partly done" aria-pressed="false">Partly done</button>
+        <button type="button" data-f="Not done" aria-pressed="false">Not done</button>
+      </div>
+      <div id="list"></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<script>
+/* ====== PASTE YOUR APPS SCRIPT WEB APP URL HERE (ends with /exec) ====== */
+const API_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+/* ====================================================================== */
+
+const $ = id => document.getElementById(id);
+const store = {
+  get(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } },
+  set(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
+};
+let config = null, photos = [], tracker = null, filter = 'all';
+
+async function apiGet(params){
+  const r = await fetch(API_URL + '?' + new URLSearchParams(params));
+  return r.json();
+}
+async function apiPost(data){
+  // text/plain avoids the CORS block from Apps Script
+  const r = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(data) });
+  return r.json();
+}
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showErr(el, text){ el.textContent = text; el.hidden = !text; }
+
+/* ---------- Routing ---------- */
+function route(){
+  const isTracker = location.hash === '#tracker';
+  $('formView').hidden = isTracker;
+  $('trackerView').hidden = !isTracker;
+  $('title').textContent = isTracker ? 'Execution tracker' : 'Communication execution';
+  $('subtitle').textContent = isTracker ? 'Which stores have confirmed, with photo proof'
+                                        : 'Confirm with photos once it is done in your store';
+  if (isTracker) initTracker(); else initForm();
+}
+window.addEventListener('hashchange', route);
+
+/* ---------- Store form ---------- */
+async function initForm(){
+  if (config) return;
+  if (API_URL.startsWith('PASTE')) { $('loading').textContent = 'Setup needed: paste the Web app URL into index.html.'; return; }
   try {
-    if (p.action === 'config') {
-      return json_({
-        ok: true,
-        stores: stores_().map(s => ({ code: s.code, name: s.name, city: s.city })), // never send PINs
-        comms: comms_(true)
-      });
-    }
-    if (p.action === 'tracker') {
-      if (p.key !== ADMIN_KEY) return json_({ ok: false, error: 'Wrong admin key.' });
-      const comms = comms_(false);
-      const commId = p.comm || (comms.find(c => c.active) || comms[0] || {}).id;
-      const latest = {};
-      rows_('Responses').forEach(r => {
-        if (String(r[1]) !== commId) return;
-        latest[String(r[3])] = {               // later rows overwrite earlier ones
-          time: r[0] instanceof Date ? Utilities.formatDate(r[0], TZ, 'dd-MMM HH:mm') : String(r[0]),
-          sm: String(r[5]), status: String(r[6]), remarks: String(r[7]),
-          photos: String(r[8] || '').split('\n').filter(Boolean)
-        };
-      });
-      const list = stores_().map(s => Object.assign(
-        { code: s.code, name: s.name, city: s.city },
-        latest[s.code] || { status: 'Pending', time: '', sm: '', remarks: '', photos: [] }));
-      return json_({ ok: true, comms: comms, comm: commId, stores: list });
-    }
-    return json_({ ok: true, msg: 'Backend is running.' });
-  } catch (err) {
-    return json_({ ok: false, error: String(err) });
-  }
-}
+    config = await apiGet({action:'config'});
+    if (!config.ok) throw new Error(config.error);
+  } catch(e) { $('loading').textContent = 'Could not load. Check internet and reload the page.'; config = null; return; }
 
-/* ---------- POST: save one confirmation ---------- */
-function doPost(e) {
-  const lock = LockService.getScriptLock();
+  if (!config.comms.length) { $('loading').textContent = 'No active communication right now.'; return; }
+  $('comm').innerHTML = '<option value="">Choose communication</option>' +
+    config.comms.map(c => `<option value="${esc(c.id)}">${esc(c.id)} – ${esc(c.title)}</option>`).join('');
+  $('store').innerHTML = '<option value="">Choose your store</option>' +
+    config.stores.map(s => `<option value="${esc(s.code)}">${esc(s.code)} – ${esc(s.name)}</option>`).join('');
+  $('store').value = store.get('ce_store');
+  $('sm').value = store.get('ce_sm');
+  if (config.comms.length === 1) { $('comm').value = config.comms[0].id; showDetails(); }
+  $('loading').hidden = true; $('form').hidden = false;
+}
+function showDetails(){
+  const c = config.comms.find(x => x.id === $('comm').value);
+  const box = $('commDetails');
+  if (!c || (!c.details && !c.deadline)) { box.hidden = true; return; }
+  box.textContent = (c.details || '') + (c.deadline ? `  (Deadline: ${c.deadline})` : '');
+  box.hidden = false;
+}
+$('comm').addEventListener('change', showDetails);
+
+function compress(file){
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const max = 1280; let w = img.width, h = img.height;
+      if (w > h && w > max) { h = Math.round(h*max/w); w = max; }
+      else if (h > max) { w = Math.round(w*max/h); h = max; }
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', 0.7));
+    };
+    img.onerror = rej; img.src = url;
+  });
+}
+$('photo').addEventListener('change', async e => {
+  for (const f of [...e.target.files]) {
+    if (photos.length >= 3) break;
+    try { photos.push(await compress(f)); } catch(x) {}
+  }
+  e.target.value = ''; drawThumbs();
+});
+function drawThumbs(){
+  $('thumbs').innerHTML = photos.map((p,i) =>
+    `<div><img src="${p}" alt="Photo ${i+1}"><button type="button" data-i="${i}" aria-label="Remove photo ${i+1}">×</button></div>`).join('');
+}
+$('thumbs').addEventListener('click', e => {
+  if (e.target.dataset.i !== undefined) { photos.splice(+e.target.dataset.i, 1); drawThumbs(); }
+});
+
+$('form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const status = (document.querySelector('input[name=status]:checked') || {}).value;
+  const d = { comm:$('comm').value, store:$('store').value, pin:$('pin').value.trim(),
+              sm:$('sm').value.trim(), status, remarks:$('remarks').value.trim(), photos };
+  const err = !d.comm ? 'Choose the communication.' : !d.store ? 'Choose your store.' :
+    !d.pin ? 'Enter the store PIN.' : !d.sm ? 'Enter your name.' : !status ? 'Choose a status.' :
+    (status === 'Done' && !photos.length) ? 'Add at least one photo for Done.' :
+    (status !== 'Done' && !d.remarks) ? 'Write the reason in remarks.' : '';
+  showErr($('formErr'), err); if (err) return;
+
+  const btn = $('submitBtn'); btn.disabled = true; btn.textContent = 'Sending…';
   try {
-    const d = JSON.parse(e.postData.contents);
-    const store = stores_().find(s => s.code === String(d.store));
-    if (!store) return json_({ ok: false, error: 'Store not found.' });
-    if (store.pin !== String(d.pin).trim()) return json_({ ok: false, error: 'Wrong PIN for this store.' });
-    const comm = comms_(true).find(c => c.id === String(d.comm));
-    if (!comm) return json_({ ok: false, error: 'This communication is closed or not found.' });
-    if (!['Done', 'Partly done', 'Not done'].includes(d.status))
-      return json_({ ok: false, error: 'Choose a status.' });
-    if (d.status === 'Done' && (!d.photos || !d.photos.length))
-      return json_({ ok: false, error: 'Add at least one photo for Done.' });
+    const r = await apiPost(d);
+    if (!r.ok) throw new Error(r.error);
+    store.set('ce_store', d.store); store.set('ce_sm', d.sm);
+    const c = config.comms.find(x => x.id === d.comm);
+    $('thanksText').textContent = `${d.store}: ${d.status} for ${c ? c.title : d.comm}, with ${r.photos} photo(s).`;
+    $('form').hidden = true; $('thanks').hidden = false;
+  } catch(x) {
+    showErr($('formErr'), x.message && x.message !== 'Failed to fetch' ? x.message : 'Not sent. Check internet and try again.');
+  } finally { btn.disabled = false; btn.textContent = 'Send confirmation'; }
+});
+$('againBtn').addEventListener('click', () => {
+  photos = []; drawThumbs(); $('remarks').value = ''; $('pin').value = '';
+  document.querySelectorAll('input[name=status]').forEach(r => r.checked = false);
+  $('thanks').hidden = true; $('form').hidden = false; window.scrollTo(0,0);
+});
 
-    // Save photos in Drive: Comm Execution Photos / <CommID> /
-    const root = DriveApp.getFolderById(PropertiesService.getScriptProperties().getProperty('FOLDER_ID'));
-    const it = root.getFoldersByName(comm.id);
-    const folder = it.hasNext() ? it.next() : root.createFolder(comm.id);
-    const stamp = Utilities.formatDate(new Date(), TZ, 'yyyyMMdd-HHmm');
-    const links = (d.photos || []).slice(0, 3).map((dataUrl, i) => {
-      const m = String(dataUrl).match(/^data:(.+);base64,(.*)$/);
-      if (!m) return '';
-      const blob = Utilities.newBlob(Utilities.base64Decode(m[2]), m[1],
-        store.code + '_' + stamp + '_' + (i + 1) + '.jpg');
-      const f = folder.createFile(blob);
-      try { f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (x) {}
-      return f.getUrl();
-    }).filter(Boolean);
-
-    lock.waitLock(20000);
-    SpreadsheetApp.getActive().getSheetByName('Responses').appendRow([
-      new Date(), comm.id, comm.title, store.code, store.name,
-      String(d.sm || ''), d.status, String(d.remarks || ''), links.join('\n')
-    ]);
-    return json_({ ok: true, photos: links.length });
-  } catch (err) {
-    return json_({ ok: false, error: String(err) });
-  } finally {
-    try { lock.releaseLock(); } catch (x) {}
-  }
+/* ---------- AM tracker ---------- */
+function initTracker(){
+  const k = store.get('ce_key');
+  if (k && !tracker) { $('adminKey').value = k; loadTracker(); }
 }
+async function loadTracker(comm){
+  const key = $('adminKey').value.trim();
+  if (!key) { showErr($('keyErr'), 'Enter the admin key.'); return; }
+  $('openTracker').disabled = true;
+  try {
+    const params = {action:'tracker', key}; if (comm) params.comm = comm;
+    const r = await apiGet(params);
+    if (!r.ok) throw new Error(r.error);
+    tracker = r; store.set('ce_key', key);
+    $('keyCard').hidden = true; $('trackerBody').hidden = false; showErr($('keyErr'), '');
+    $('tComm').innerHTML = r.comms.map(c =>
+      `<option value="${esc(c.id)}">${esc(c.id)} – ${esc(c.title)}${c.active ? '' : ' (closed)'}</option>`).join('');
+    $('tComm').value = r.comm;
+    drawTracker();
+  } catch(x) {
+    $('keyCard').hidden = false; $('trackerBody').hidden = true;
+    showErr($('keyErr'), x.message === 'Failed to fetch' ? 'Could not connect. Check internet.' : x.message);
+  } finally { $('openTracker').disabled = false; }
+}
+function drawTracker(){
+  const s = tracker.stores, n = s.length;
+  const cnt = st => s.filter(x => x.status === st).length;
+  const done = cnt('Done');
+  $('doneCount').textContent = done;
+  $('doneOf').textContent = `of ${n} stores done`;
+  $('barFill').style.width = n ? (done/n*100) + '%' : '0';
+  $('counts').innerHTML = `<span>Partly done: ${cnt('Partly done')}</span><span>Not done: ${cnt('Not done')}</span><span>Pending: ${cnt('Pending')}</span>`;
+  const rows = s.filter(x => filter === 'all' || x.status === filter);
+  $('list').innerHTML = rows.length ? rows.map(x => `
+    <div class="row"><div>
+      <div class="name">${esc(x.code)} – ${esc(x.name)}</div>
+      <div class="meta">${x.time ? esc(x.time) + ' · ' + esc(x.sm) : esc(x.city)}</div>
+      ${x.remarks ? `<div class="meta">${esc(x.remarks)}</div>` : ''}
+      ${x.photos.length ? `<div class="meta">${x.photos.map((p,i)=>`<a href="${esc(p)}" target="_blank" rel="noopener">Photo ${i+1}</a>`).join('')}</div>` : ''}
+    </div><span class="chip c-${esc(x.status.split(' ')[0])}">${esc(x.status)}</span></div>`).join('')
+    : '<p class="hint">No stores in this view.</p>';
+}
+$('openTracker').addEventListener('click', () => loadTracker());
+$('tComm').addEventListener('change', e => loadTracker(e.target.value));
+$('refresh').addEventListener('click', () => loadTracker($('tComm').value));
+$('filters').addEventListener('click', e => {
+  const f = e.target.dataset.f; if (!f) return;
+  filter = f;
+  $('filters').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.f === f));
+  drawTracker();
+});
+$('copyPending').addEventListener('click', async () => {
+  const c = tracker.comms.find(x => x.id === tracker.comm);
+  const pend = tracker.stores.filter(x => x.status !== 'Done');
+  const text = pend.length
+    ? `Reminder: ${c ? c.title : tracker.comm}\nPlease execute and confirm with photos:\n` +
+      pend.map(x => `• ${x.code} ${x.name} (${x.status})`).join('\n') + `\n\nLink: ${location.href.split('#')[0]}`
+    : `All stores done for ${c ? c.title : tracker.comm}. Thank you!`;
+  try { await navigator.clipboard.writeText(text); }
+  catch(e) { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+  $('copied').hidden = false; setTimeout(() => $('copied').hidden = true, 3000);
+});
+
+route();
+</script>
+</body>
+</html>
