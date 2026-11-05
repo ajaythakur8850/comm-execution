@@ -1,0 +1,140 @@
+/***** COMMUNICATION EXECUTION – BACKEND (Google Apps Script) *****
+ * 1. Change ADMIN_KEY below to your own secret word.
+ * 2. Run setup() once.
+ * 3. Deploy → New deployment → Web app → Execute as: Me, Access: Anyone.
+ *******************************************************************/
+
+const ADMIN_KEY = 'change-this-key';   // only you use this, to open the tracker
+const TZ = 'Asia/Kolkata';
+
+/* ---------- One-time setup: creates tabs and photo folder ---------- */
+function setup() {
+  const ss = SpreadsheetApp.getActive();
+  makeSheet_(ss, 'Stores', ['StoreCode', 'StoreName', 'City', 'PIN'],
+    [['HJ01', 'Sample Store Ranchi', 'Ranchi', '1234']]);
+  makeSheet_(ss, 'Communications', ['CommID', 'Title', 'Details', 'Active', 'Deadline'],
+    [['C-001', 'Sample: Weekend offer display', 'Put offer posters at entry and billing counters', 'Yes', '']]);
+  makeSheet_(ss, 'Responses', ['Timestamp', 'CommID', 'CommTitle', 'StoreCode', 'StoreName',
+    'SMName', 'Status', 'Remarks', 'PhotoLinks'], []);
+
+  const props = PropertiesService.getScriptProperties();
+  if (!props.getProperty('FOLDER_ID')) {
+    const folder = DriveApp.createFolder('Comm Execution Photos');
+    props.setProperty('FOLDER_ID', folder.getId());
+  }
+  SpreadsheetApp.getUi().alert('Setup done. Fill the Stores and Communications tabs.');
+}
+
+function makeSheet_(ss, name, headers, sample) {
+  let sh = ss.getSheetByName(name);
+  if (sh) return sh;
+  sh = ss.insertSheet(name);
+  sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+  sh.setFrozenRows(1);
+  if (sample.length) sh.getRange(2, 1, sample.length, headers.length).setValues(sample);
+  if (name === 'Stores') sh.getRange('D:D').setNumberFormat('@'); // keep PINs like 0123
+  return sh;
+}
+
+/* ---------- Helpers ---------- */
+function rows_(name) {
+  const v = SpreadsheetApp.getActive().getSheetByName(name).getDataRange().getValues();
+  v.shift();
+  return v.filter(r => String(r[0]).trim() !== '');
+}
+function json_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+function stores_() {
+  return rows_('Stores').map(r => ({
+    code: String(r[0]).trim(), name: String(r[1]), city: String(r[2]), pin: String(r[3]).trim()
+  }));
+}
+function comms_(onlyActive) {
+  return rows_('Communications')
+    .filter(r => !onlyActive || String(r[3]).trim().toLowerCase() === 'yes')
+    .map(r => ({
+      id: String(r[0]).trim(), title: String(r[1]), details: String(r[2]),
+      active: String(r[3]).trim().toLowerCase() === 'yes',
+      deadline: r[4] instanceof Date ? Utilities.formatDate(r[4], TZ, 'dd-MMM-yyyy') : String(r[4] || '')
+    }));
+}
+
+/* ---------- GET: form config and tracker ---------- */
+function doGet(e) {
+  const p = e.parameter || {};
+  try {
+    if (p.action === 'config') {
+      return json_({
+        ok: true,
+        stores: stores_().map(s => ({ code: s.code, name: s.name, city: s.city })), // never send PINs
+        comms: comms_(true)
+      });
+    }
+    if (p.action === 'tracker') {
+      if (p.key !== ADMIN_KEY) return json_({ ok: false, error: 'Wrong admin key.' });
+      const comms = comms_(false);
+      const commId = p.comm || (comms.find(c => c.active) || comms[0] || {}).id;
+      const latest = {};
+      rows_('Responses').forEach(r => {
+        if (String(r[1]) !== commId) return;
+        latest[String(r[3])] = {               // later rows overwrite earlier ones
+          time: r[0] instanceof Date ? Utilities.formatDate(r[0], TZ, 'dd-MMM HH:mm') : String(r[0]),
+          sm: String(r[5]), status: String(r[6]), remarks: String(r[7]),
+          photos: String(r[8] || '').split('\n').filter(Boolean)
+        };
+      });
+      const list = stores_().map(s => Object.assign(
+        { code: s.code, name: s.name, city: s.city },
+        latest[s.code] || { status: 'Pending', time: '', sm: '', remarks: '', photos: [] }));
+      return json_({ ok: true, comms: comms, comm: commId, stores: list });
+    }
+    return json_({ ok: true, msg: 'Backend is running.' });
+  } catch (err) {
+    return json_({ ok: false, error: String(err) });
+  }
+}
+
+/* ---------- POST: save one confirmation ---------- */
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  try {
+    const d = JSON.parse(e.postData.contents);
+    const store = stores_().find(s => s.code === String(d.store));
+    if (!store) return json_({ ok: false, error: 'Store not found.' });
+    if (store.pin !== String(d.pin).trim()) return json_({ ok: false, error: 'Wrong PIN for this store.' });
+    const comm = comms_(true).find(c => c.id === String(d.comm));
+    if (!comm) return json_({ ok: false, error: 'This communication is closed or not found.' });
+    if (!['Done', 'Partly done', 'Not done'].includes(d.status))
+      return json_({ ok: false, error: 'Choose a status.' });
+    if (d.status === 'Done' && (!d.photos || !d.photos.length))
+      return json_({ ok: false, error: 'Add at least one photo for Done.' });
+
+    // Save photos in Drive: Comm Execution Photos / <CommID> /
+    const root = DriveApp.getFolderById(PropertiesService.getScriptProperties().getProperty('FOLDER_ID'));
+    const it = root.getFoldersByName(comm.id);
+    const folder = it.hasNext() ? it.next() : root.createFolder(comm.id);
+    const stamp = Utilities.formatDate(new Date(), TZ, 'yyyyMMdd-HHmm');
+    const links = (d.photos || []).slice(0, 3).map((dataUrl, i) => {
+      const m = String(dataUrl).match(/^data:(.+);base64,(.*)$/);
+      if (!m) return '';
+      const blob = Utilities.newBlob(Utilities.base64Decode(m[2]), m[1],
+        store.code + '_' + stamp + '_' + (i + 1) + '.jpg');
+      const f = folder.createFile(blob);
+      try { f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (x) {}
+      return f.getUrl();
+    }).filter(Boolean);
+
+    lock.waitLock(20000);
+    SpreadsheetApp.getActive().getSheetByName('Responses').appendRow([
+      new Date(), comm.id, comm.title, store.code, store.name,
+      String(d.sm || ''), d.status, String(d.remarks || ''), links.join('\n')
+    ]);
+    return json_({ ok: true, photos: links.length });
+  } catch (err) {
+    return json_({ ok: false, error: String(err) });
+  } finally {
+    try { lock.releaseLock(); } catch (x) {}
+  }
+}
