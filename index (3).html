@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Communication Execution · R5-C</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hind:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#eef2f0; --surface:#ffffff; --ink:#18302a; --muted:#5d6f69; --line:#d3ddd9;
+  --brand:#0d6b4f; --brand-ink:#ffffff;
+  --done:#0d6b4f; --done-bg:#dcefe6; --part:#9a6200; --part-bg:#fbeccd;
+  --not:#b3261e; --not-bg:#f9dedc; --pend:#5d6f69; --pend-bg:#e6ebe9;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1714; --surface:#17221e; --ink:#e3ece8; --muted:#97aaa3; --line:#2b3a35;
+  --brand:#3fb68b; --brand-ink:#06140f;
+  --done:#6fd3a9; --done-bg:#163b2d; --part:#f0bf63; --part-bg:#3b2d0f;
+  --not:#f2a29c; --not-bg:#45201d; --pend:#97aaa3; --pend-bg:#232f2b; color-scheme:dark;}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:17px/1.5 Hind,"Segoe UI",Roboto,Arial,sans-serif;
+  padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+header{background:var(--brand);color:var(--brand-ink);padding:18px 18px 22px}
+header h1{margin:0;font-size:1.45rem;line-height:1.2;font-weight:700}
+header p{margin:2px 0 0;opacity:.85;font-size:.95rem}
+main{max-width:680px;margin:-10px auto 32px;padding:0 12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px}
+label,.lbl{display:block;font-weight:600;margin:14px 0 6px}
+.card>label:first-child{margin-top:0}
+select,input[type=text],input[type=password],textarea{
+  width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);
+  border-radius:10px;padding:11px 12px}
+textarea{min-height:76px;resize:vertical}
+:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+.details{margin-top:8px;padding:10px 12px;border-left:4px solid var(--brand);background:var(--bg);
+  border-radius:6px;font-size:.95rem;color:var(--muted)}
+.check{border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:14px;background:var(--bg)}
+.check h3{margin:0 0 10px;font-size:1.05rem;display:flex;gap:8px;align-items:center}
+.check h3 .num{flex:none;width:26px;height:26px;border-radius:50%;background:var(--brand);color:var(--brand-ink);
+  display:grid;place-items:center;font-size:.85rem}
+.status{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.status input{position:absolute;opacity:0}
+.status label{margin:0;text-align:center;padding:11px 4px;border:2px solid var(--line);border-radius:10px;
+  font-weight:600;cursor:pointer;background:var(--surface)}
+.status input:focus-visible+label{outline:3px solid var(--brand);outline-offset:2px}
+.status input[value="Done"]:checked+label{border-color:var(--done);background:var(--done-bg);color:var(--done)}
+.status input[value="Partly done"]:checked+label{border-color:var(--part);background:var(--part-bg);color:var(--part)}
+.status input[value="Not done"]:checked+label{border-color:var(--not);background:var(--not-bg);color:var(--not)}
+.photo-btn{display:flex;align-items:center;justify-content:center;gap:8px;border:2px dashed var(--line);
+  border-radius:12px;padding:14px;cursor:pointer;font-weight:600;color:var(--brand);margin:12px 0 0;background:var(--surface)}
+.thumbs{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.thumbs div{position:relative}
+.thumbs img{width:84px;height:84px;object-fit:cover;border-radius:10px;display:block}
+.thumbs button{position:absolute;top:-6px;right:-6px;width:26px;height:26px;border-radius:50%;border:0;
+  background:var(--not);color:#fff;font-weight:700;cursor:pointer}
+.hint{font-size:.88rem;color:var(--muted);margin:6px 0 0}
+.btn{display:block;width:100%;font:inherit;font-weight:700;font-size:1.05rem;border:0;border-radius:12px;
+  padding:14px;background:var(--brand);color:var(--brand-ink);cursor:pointer;margin-top:16px}
+.btn.secondary{background:transparent;color:var(--brand);border:2px solid var(--brand)}
+.btn:disabled{opacity:.6;cursor:wait}
+.msg{padding:10px 12px;border-radius:10px;margin-top:12px;font-weight:500}
+.msg.err{background:var(--not-bg);color:var(--not)}
+.msg.ok{background:var(--done-bg);color:var(--done)}
+.big-tick{font-size:3rem;line-height:1;color:var(--done);text-align:center}
+.center{text-align:center}
+.summary{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.summary strong{font-size:2.4rem;line-height:1}
+.bar{height:10px;border-radius:5px;background:var(--pend-bg);overflow:hidden;margin:10px 0 6px}
+.bar span{display:block;height:100%;background:var(--done)}
+.counts{display:flex;gap:14px;flex-wrap:wrap;font-size:.92rem;color:var(--muted)}
+.checkstats{margin-top:12px;display:grid;gap:8px}
+.checkstats div{display:flex;justify-content:space-between;gap:10px;background:var(--bg);border-radius:10px;padding:8px 12px;font-size:.95rem}
+.row{padding:12px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.row .top{display:flex;justify-content:space-between;gap:10px}
+.row .name{font-weight:600}
+.meta{font-size:.86rem;color:var(--muted)}
+.meta a{color:var(--brand);margin-right:8px}
+.sub{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:6px;font-size:.9rem}
+.chip{flex:none;align-self:flex-start;font-size:.8rem;font-weight:700;padding:2px 10px;border-radius:20px;white-space:nowrap}
+.c-Done{background:var(--done-bg);color:var(--done)}
+.c-Partly{background:var(--part-bg);color:var(--part)}
+.c-Not{background:var(--not-bg);color:var(--not)}
+.c-Pending{background:var(--pend-bg);color:var(--pend)}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.filters button{font:inherit;font-size:.9rem;border:1px solid var(--line);background:var(--bg);color:var(--ink);
+  border-radius:20px;padding:4px 12px;cursor:pointer}
+.filters button[aria-pressed=true]{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Communication execution</h1>
+  <p id="subtitle">R5-C · Confirm with photos once it is done in your store</p>
+</header>
+<main>
+
+<!-- ===== STORE FORM ===== -->
+<section id="formView">
+  <div class="card" id="loading">Loading communications…</div>
+  <form class="card" id="form" hidden novalidate>
+    <label for="comm">Communication</label>
+    <select id="comm" required></select>
+    <div class="details" id="commDetails" hidden></div>
+
+    <label for="store">Store</label>
+    <select id="store" required></select>
+
+    <label for="pin">Store PIN</label>
+    <input id="pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" required>
+
+    <label for="sm">Your name</label>
+    <input id="sm" type="text" autocomplete="name" required>
+
+    <div id="checks"></div>
+    <input id="photo" type="file" accept="image/*" capture="environment" multiple hidden>
+
+    <label for="remarks">Remarks</label>
+    <textarea id="remarks" placeholder="Required if anything is partly done or not done"></textarea>
+
+    <button class="btn" id="submitBtn" type="submit">Send confirmation</button>
+    <div class="msg err" id="formErr" hidden></div>
+  </form>
+
+  <div class="card center" id="thanks" hidden>
+    <div class="big-tick">✓</div>
+    <h2>Confirmation sent</h2>
+    <p id="thanksText"></p>
+    <button class="btn" id="againBtn" type="button">Send another confirmation</button>
+  </div>
+</section>
+
+<!-- ===== AM TRACKER ===== -->
+<section id="trackerView" hidden>
+  <div class="card" id="keyCard">
+    <label for="adminKey">Admin key</label>
+    <input id="adminKey" type="password" autocomplete="off">
+    <button class="btn" id="openTracker" type="button">Open tracker</button>
+    <div class="msg err" id="keyErr" hidden></div>
+  </div>
+  <div id="trackerBody" hidden>
+    <div class="card">
+      <label for="tComm">Communication</label>
+      <select id="tComm"></select>
+    </div>
+    <div class="card">
+      <div class="summary"><strong id="doneCount">0</strong><span id="doneOf">of 0 stores fully done</span></div>
+      <div class="bar"><span id="barFill" style="width:0"></span></div>
+      <div class="counts" id="counts"></div>
+      <div class="checkstats" id="checkStats"></div>
+      <button class="btn" id="copyPending" type="button">Copy pending list for WhatsApp</button>
+      <button class="btn secondary" id="refresh" type="button">Refresh</button>
+      <div class="msg ok" id="copied" hidden>Pending list copied. Paste it in WhatsApp.</div>
+    </div>
+    <div class="card">
+      <div class="filters" id="filters">
+        <button type="button" data-f="all" aria-pressed="true">All</button>
+        <button type="button" data-f="Pending" aria-pressed="false">Pending</button>
+        <button type="button" data-f="Done" aria-pressed="false">Done</button>
+        <button type="button" data-f="Partly done" aria-pressed="false">Partly done</button>
+        <button type="button" data-f="Not done" aria-pressed="false">Not done</button>
+      </div>
+      <div id="list"></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<script>
+/* ====== YOUR APPS SCRIPT WEB APP URL (ends with /exec) ====== */
+const API_URL = 'https://script.google.com/macros/s/AKfycbzNpjcBahx3D3Oh1lxahFP4W2wCV38eOyE7PM4qLvdU9Kd-0H1lOtPJ8Yvn-kSd5fup6A/exec';
+/* ============================================================ */
+
+const STATUSES = ['Done', 'Partly done', 'Not done'];
+const MAX_PHOTOS = 3;
+const $ = id => document.getElementById(id);
+const store = {
+  get(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } },
+  set(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
+};
+let config = null, answers = [], photoTarget = 0, tracker = null, filter = 'all';
+
+async function apiGet(params){
+  const r = await fetch(API_URL + '?' + new URLSearchParams(params));
+  return r.json();
+}
+async function apiPost(data){
+  const r = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(data) });
+  return r.json();
+}
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showErr(el, text){ el.textContent = text; el.hidden = !text; }
+function chipClass(s){ return 'c-' + String(s).split(' ')[0]; }
+
+/* ---------- Routing ---------- */
+function route(){
+  const isTracker = location.hash === '#tracker';
+  $('formView').hidden = isTracker;
+  $('trackerView').hidden = !isTracker;
+  $('title').textContent = isTracker ? 'Execution tracker' : 'Communication execution';
+  $('subtitle').textContent = isTracker ? 'R5-C · Which stores have confirmed, with photo proof'
+                                        : 'R5-C · Confirm with photos once it is done in your store';
+  if (isTracker) initTracker(); else initForm();
+}
+window.addEventListener('hashchange', route);
+
+/* ---------- Store form ---------- */
+async function initForm(){
+  if (config) return;
+  try {
+    config = await apiGet({action:'config'});
+    if (!config.ok) throw new Error(config.error);
+  } catch(e) { $('loading').textContent = 'Could not load. Check internet and reload the page.'; config = null; return; }
+
+  if (!config.comms.length) { $('loading').textContent = 'No active communication right now.'; return; }
+  $('comm').innerHTML = '<option value="">Choose communication</option>' +
+    config.comms.map(c => `<option value="${esc(c.id)}">${esc(c.title)}</option>`).join('');
+  $('store').innerHTML = '<option value="">Choose your store</option>' +
+    config.stores.map(s => `<option value="${esc(s.code)}">${esc(s.code)} – ${esc(s.name)}</option>`).join('');
+  $('store').value = store.get('ce_store');
+  $('sm').value = store.get('ce_sm');
+  if (config.comms.length === 1) $('comm').value = config.comms[0].id;
+  onCommChange();
+  $('loading').hidden = true; $('form').hidden = false;
+}
+function currentComm(){ return config && config.comms.find(x => x.id === $('comm').value); }
+function onCommChange(){
+  const c = currentComm(), box = $('commDetails');
+  if (c && (c.details || c.deadline)) {
+    box.textContent = (c.details || '') + (c.deadline ? `  (Deadline: ${c.deadline})` : '');
+    box.hidden = false;
+  } else box.hidden = true;
+  answers = c ? c.checks.map(() => ({ status:'', photos:[] })) : [];
+  drawChecks();
+}
+$('comm').addEventListener('change', onCommChange);
+
+function drawChecks(){
+  const c = currentComm();
+  if (!c) { $('checks').innerHTML = ''; return; }
+  $('checks').innerHTML = c.checks.map((name, i) => `
+    <div class="check">
+      <h3><span class="num">${i+1}</span>${esc(name)}</h3>
+      <div class="status" role="radiogroup" aria-label="${esc(name)}">
+        ${STATUSES.map((s, j) => `
+          <input type="radio" name="st${i}" id="st${i}_${j}" value="${s}" data-i="${i}" ${answers[i].status === s ? 'checked' : ''}>
+          <label for="st${i}_${j}">${s}</label>`).join('')}
+      </div>
+      <button type="button" class="photo-btn" data-photo="${i}">📷 Add photo (${answers[i].photos.length}/${MAX_PHOTOS})</button>
+      <div class="thumbs">${answers[i].photos.map((p, k) =>
+        `<div><img src="${p}" alt="Photo ${k+1}"><button type="button" data-del="${i}_${k}" aria-label="Remove photo ${k+1}">×</button></div>`).join('')}</div>
+      <p class="hint">Photo is required if Done.</p>
+    </div>`).join('');
+}
+$('checks').addEventListener('change', e => {
+  if (e.target.name && e.target.name.startsWith('st')) answers[+e.target.dataset.i].status = e.target.value;
+});
+$('checks').addEventListener('click', e => {
+  const t = e.target;
+  if (t.dataset.photo !== undefined) {
+    photoTarget = +t.dataset.photo;
+    if (answers[photoTarget].photos.length >= MAX_PHOTOS) return;
+    $('photo').click();
+  }
+  if (t.dataset.del !== undefined) {
+    const [i, k] = t.dataset.del.split('_').map(Number);
+    answers[i].photos.splice(k, 1); drawChecks();
+  }
+});
+
+function compress(file){
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const max = 1200; let w = img.width, h = img.height;
+      if (w > h && w > max) { h = Math.round(h*max/w); w = max; }
+      else if (h > max) { w = Math.round(w*max/h); h = max; }
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', 0.68));
+    };
+    img.onerror = rej; img.src = url;
+  });
+}
+$('photo').addEventListener('change', async e => {
+  const list = answers[photoTarget].photos;
+  for (const f of [...e.target.files]) {
+    if (list.length >= MAX_PHOTOS) break;
+    try { list.push(await compress(f)); } catch(x) {}
+  }
+  e.target.value = ''; drawChecks();
+});
+
+$('form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const c = currentComm();
+  const d = { comm:$('comm').value, store:$('store').value, pin:$('pin').value.trim(),
+              sm:$('sm').value.trim(), remarks:$('remarks').value.trim(), checks:answers };
+  let err = !d.comm ? 'Choose the communication.' : !d.store ? 'Choose your store.' :
+    !d.pin ? 'Enter the store PIN.' : !d.sm ? 'Enter your name.' : '';
+  if (!err && c) {
+    for (let i = 0; i < answers.length; i++) {
+      if (!answers[i].status) { err = `Choose a status for: ${c.checks[i]}`; break; }
+      if (answers[i].status === 'Done' && !answers[i].photos.length) { err = `Add at least one photo for: ${c.checks[i]}`; break; }
+    }
+    if (!err && answers.some(a => a.status !== 'Done') && !d.remarks) err = 'Write the reason in remarks.';
+  }
+  showErr($('formErr'), err); if (err) return;
+
+  const btn = $('submitBtn'); btn.disabled = true; btn.textContent = 'Sending… please wait';
+  try {
+    const r = await apiPost(d);
+    if (!r.ok) throw new Error(r.error);
+    store.set('ce_store', d.store); store.set('ce_sm', d.sm);
+    $('thanksText').textContent = `${d.store}: ${r.overall} for ${c.title}, with ${r.photos} photo(s).`;
+    $('form').hidden = true; $('thanks').hidden = false; window.scrollTo(0,0);
+  } catch(x) {
+    showErr($('formErr'), x.message && x.message !== 'Failed to fetch' ? x.message : 'Not sent. Check internet and try again.');
+  } finally { btn.disabled = false; btn.textContent = 'Send confirmation'; }
+});
+$('againBtn').addEventListener('click', () => {
+  $('remarks').value = ''; $('pin').value = '';
+  onCommChange();
+  $('thanks').hidden = true; $('form').hidden = false; window.scrollTo(0,0);
+});
+
+/* ---------- AM tracker ---------- */
+function initTracker(){
+  const k = store.get('ce_key');
+  if (k && !tracker) { $('adminKey').value = k; loadTracker(); }
+}
+async function loadTracker(comm){
+  const key = $('adminKey').value.trim();
+  if (!key) { showErr($('keyErr'), 'Enter the admin key.'); return; }
+  $('openTracker').disabled = true;
+  try {
+    const params = {action:'tracker', key}; if (comm) params.comm = comm;
+    const r = await apiGet(params);
+    if (!r.ok) throw new Error(r.error);
+    tracker = r; store.set('ce_key', key);
+    $('keyCard').hidden = true; $('trackerBody').hidden = false; showErr($('keyErr'), '');
+    $('tComm').innerHTML = r.comms.map(c =>
+      `<option value="${esc(c.id)}">${esc(c.title)}${c.active ? '' : ' (closed)'}</option>`).join('');
+    $('tComm').value = r.comm;
+    drawTracker();
+  } catch(x) {
+    $('keyCard').hidden = false; $('trackerBody').hidden = true;
+    showErr($('keyErr'), x.message === 'Failed to fetch' ? 'Could not connect. Check internet.' : x.message);
+  } finally { $('openTracker').disabled = false; }
+}
+function drawTracker(){
+  const s = tracker.stores, n = s.length;
+  const cnt = st => s.filter(x => x.status === st).length;
+  const done = cnt('Done');
+  $('doneCount').textContent = done;
+  $('doneOf').textContent = `of ${n} stores fully done`;
+  $('barFill').style.width = n ? (done/n*100) + '%' : '0';
+  $('counts').innerHTML = `<span>Partly done: ${cnt('Partly done')}</span><span>Not done: ${cnt('Not done')}</span><span>Pending: ${cnt('Pending')}</span>`;
+  $('checkStats').innerHTML = (tracker.checks || []).map((name, i) => {
+    const d = s.filter(x => (x.checks[i] || {}).status === 'Done').length;
+    return `<div><span>${esc(name)}</span><strong>${d} / ${n}</strong></div>`;
+  }).join('');
+  const rows = s.filter(x => filter === 'all' || x.status === filter);
+  $('list').innerHTML = rows.length ? rows.map(x => `
+    <div class="row">
+      <div class="top"><div>
+        <div class="name">${esc(x.code)} – ${esc(x.name)}</div>
+        <div class="meta">${x.time ? esc(x.time) + ' · ' + esc(x.sm) : 'No confirmation yet'}</div>
+      </div><span class="chip ${chipClass(x.status)}">${esc(x.status)}</span></div>
+      ${x.checks.map(c => `
+        <div class="sub"><span>${esc(c.name)}
+          ${c.photos.length ? `<span class="meta"> · ${c.photos.map((p,k)=>`<a href="${esc(p)}" target="_blank" rel="noopener">Photo ${k+1}</a>`).join('')}</span>` : ''}
+        </span><span class="chip ${chipClass(c.status)}">${esc(c.status)}</span></div>`).join('')}
+      ${x.remarks ? `<div class="meta">Remarks: ${esc(x.remarks)}</div>` : ''}
+    </div>`).join('')
+    : '<p class="hint">No stores in this view.</p>';
+}
+$('openTracker').addEventListener('click', () => loadTracker());
+$('tComm').addEventListener('change', e => loadTracker(e.target.value));
+$('refresh').addEventListener('click', () => loadTracker($('tComm').value));
+$('filters').addEventListener('click', e => {
+  const f = e.target.dataset.f; if (!f) return;
+  filter = f;
+  $('filters').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.f === f));
+  drawTracker();
+});
+$('copyPending').addEventListener('click', async () => {
+  const c = tracker.comms.find(x => x.id === tracker.comm);
+  const title = c ? c.title : tracker.comm;
+  const pend = tracker.stores.filter(x => x.status !== 'Done');
+  const text = pend.length
+    ? `*${title}*\nPending stores, please complete and confirm with photos:\n` +
+      pend.map(x => {
+        const left = x.checks.filter(k => k.status !== 'Done').map(k => k.name).join(', ');
+        return `• ${x.code} ${x.name}: ${x.status === 'Pending' ? 'not confirmed' : left}`;
+      }).join('\n') + `\n\nLink: ${location.href.split('#')[0]}`
+    : `All stores done for ${title}. Thank you!`;
+  try { await navigator.clipboard.writeText(text); }
+  catch(e) { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+  $('copied').hidden = false; setTimeout(() => $('copied').hidden = true, 3000);
+});
+
+route();
+</script>
+</body>
+</html>
